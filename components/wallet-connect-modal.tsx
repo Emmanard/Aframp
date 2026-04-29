@@ -26,6 +26,9 @@ declare global {
     coinbaseWalletProvider?: {
       request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
     }
+    freighterApi?: {
+      getPublicKey: () => Promise<string>
+    }
   }
 }
 
@@ -41,8 +44,8 @@ interface WalletOption {
 const walletOptions: WalletOption[] = [
   // Ethereum Wallets
   {
-    id: 'metamask',
-    name: 'MetaMask',
+    id: 'freighter',
+    name: 'Freighter',
     icon: (
       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
         <path
@@ -71,8 +74,8 @@ const walletOptions: WalletOption[] = [
         />
       </svg>
     ),
-    chain: 'Ethereum',
-    description: 'Connect using MetaMask',
+    chain: 'Stellar',
+    description: 'Connect using Freighter',
     popular: true,
   },
   {

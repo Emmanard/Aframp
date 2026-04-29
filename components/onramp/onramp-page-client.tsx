@@ -30,7 +30,16 @@ const ORDER_KEY = 'onramp:latest-order'
 export function OnrampPageClient() {
   const router = useRouter()
   const { isConnected: storeConnected, publicKey } = useWallet()
-  const { address, addresses, connected, loading, updateAddress, disconnect } =
+  const {
+    address,
+    addresses,
+    connected,
+    loading,
+    updateAddress,
+    setDefaultAddress,
+    removeAddress,
+    disconnect,
+  } =
     useWalletConnection()
   const walletConnected = Boolean(address) || connected || storeConnected || Boolean(publicKey)
   const [walletModalOpen, setWalletModalOpen] = useState(false)
@@ -213,6 +222,8 @@ export function OnrampPageClient() {
             onSubmit={handleSubmit}
             onCopyWallet={handleCopy}
             onChangeWallet={updateAddress}
+            onSetDefaultWallet={setDefaultAddress}
+            onRemoveWallet={removeAddress}
             onDisconnectWallet={handleDisconnect}
             walletAddress={address}
             walletOptions={addresses}

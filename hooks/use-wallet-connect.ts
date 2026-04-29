@@ -3,6 +3,14 @@
 import { useRouter } from 'next/navigation'
 import { useCallback } from 'react'
 
+declare global {
+  interface Window {
+    freighterApi?: {
+      getPublicKey: () => Promise<string>
+    }
+  }
+}
+
 interface WalletProvider {
   id: string
   name: string
@@ -13,7 +21,7 @@ export const useWalletConnect = () => {
 
   const generateMockAddress = useCallback((walletId: string) => {
     // EVM-like address for Ethereum wallets
-    if (['metamask', 'trust-wallet', 'walletconnect', 'coinbase-wallet'].includes(walletId)) {
+    if (['trust-wallet', 'walletconnect', 'coinbase-wallet'].includes(walletId)) {
       return `0x${Math.random().toString(16).slice(2).padEnd(40, '0').slice(0, 40)}`
     }
     // Bitcoin-like address (very rough demo format)
@@ -25,7 +33,7 @@ export const useWalletConnect = () => {
       return `lnbc${Math.random().toString(36).slice(2).padEnd(20, '0').slice(0, 20)}`
     }
     // Stellar-like public key placeholder
-    if (['lobstr', 'stellar-xlm'].includes(walletId)) {
+    if (['freighter', 'lobstr', 'stellar-xlm'].includes(walletId)) {
       return `G${Math.random().toString(36).toUpperCase().slice(2).padEnd(55, 'A').slice(0, 55)}`
     }
     return `0x${Math.random().toString(16).slice(2).padEnd(40, '0').slice(0, 40)}`
@@ -36,23 +44,18 @@ export const useWalletConnect = () => {
       const { id: walletId, name: walletName } = wallet
       let address: string | null = null
 
-      // MetaMask connection
-      if (walletId === 'metamask') {
-        if (!window.ethereum) {
-          // Fallback to demo connect so the UI flow still works on non-web3 browsers
+      // Freighter connection
+      if (walletId === 'freighter') {
+        if (!window.freighterApi?.getPublicKey) {
           address = generateMockAddress(walletId)
           return { address, walletName }
         }
         try {
-          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' })
-          if (Array.isArray(accounts) && accounts.length > 0) {
-            address = accounts[0] as string
-          }
+          address = await window.freighterApi.getPublicKey()
         } catch (error) {
           if (error instanceof Error) {
-            // If user rejects, keep it a clear error; otherwise allow demo connect
             if (error.message.toLowerCase().includes('user rejected')) {
-              throw new Error(`MetaMask connection cancelled`)
+              throw new Error(`Freighter connection cancelled`)
             }
             address = generateMockAddress(walletId)
             return { address, walletName }
