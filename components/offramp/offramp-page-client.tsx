@@ -37,7 +37,8 @@ export function OfframpPageClient() {
   const selectedAsset = form.selectedAsset
   const { rate, countdown, lastUpdated, isLoading, refresh } = useOfframpRate(
     selectedAsset.asset,
-    selectedAsset.chain
+    selectedAsset.chain,
+    form.state.fiatCurrency
   )
 
   useEffect(() => {
