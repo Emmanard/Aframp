@@ -31,7 +31,16 @@ const ORDER_KEY = 'onramp:latest-order'
 export function OnrampPageClient() {
   const router = useRouter()
   const { isConnected: storeConnected, publicKey } = useWallet()
-  const { address, addresses, connected, loading, updateAddress, disconnect } =
+  const {
+    address,
+    addresses,
+    connected,
+    loading,
+    updateAddress,
+    setDefaultAddress,
+    removeAddress,
+    disconnect,
+  } =
     useWalletConnection()
   const walletConnected = Boolean(address) || connected || storeConnected || Boolean(publicKey)
   const [walletModalOpen, setWalletModalOpen] = useState(false)
@@ -108,6 +117,14 @@ export function OnrampPageClient() {
       return
     }
 
+    // Apply referral discount (10% off fees) on first ramp
+    const referralCode = getAppliedReferralCode()
+    const hasDiscount = !!referralCode && !isReferralDiscountConsumed()
+    const reward = hasDiscount ? calcReferralDiscount(form.fees.totalFees) : null
+    const discountedFees = reward
+      ? { ...form.fees, totalFees: form.fees.totalFees - reward.discountAmount, totalCost: form.fees.totalCost - reward.discountAmount }
+      : form.fees
+
     const order: OnrampOrder = {
       id: `order-${Date.now()}`,
       createdAt: Date.now(),
@@ -118,10 +135,12 @@ export function OnrampPageClient() {
       amount: form.amountValue,
       exchangeRate: data?.rate || 1600, // Fallback rate for demo
       cryptoAmount: form.cryptoAmount,
-      fees: form.fees,
+      fees: discountedFees,
       walletAddress: walletAddress,
       status: 'created',
     }
+
+    if (hasDiscount) markReferralDiscountConsumed()
 
     localStorage.setItem(ORDER_KEY, JSON.stringify(order))
     localStorage.setItem(`onramp:order:${order.id}`, JSON.stringify(order))
@@ -214,6 +233,8 @@ export function OnrampPageClient() {
             onSubmit={handleSubmit}
             onCopyWallet={handleCopy}
             onChangeWallet={updateAddress}
+            onSetDefaultWallet={setDefaultAddress}
+            onRemoveWallet={removeAddress}
             onDisconnectWallet={handleDisconnect}
             walletAddress={address}
             walletOptions={addresses}
@@ -252,13 +273,32 @@ export function OnrampPageClient() {
                     {formatCurrency(form.fees.networkFee, form.state.fiatCurrency)}
                   </span>
                 </div>
+                {!isReferralDiscountConsumed() && getAppliedReferralCode() && (
+                  <div className="flex items-center justify-between text-green-600 dark:text-green-400">
+                    <span>Referral discount (10%)</span>
+                    <span>
+                      −{formatCurrency(form.fees.totalFees * 0.1, form.state.fiatCurrency)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between border-t border-border pt-3 text-foreground">
                   <span>Total cost</span>
                   <span className="font-semibold">
-                    {formatCurrency(form.fees.totalCost, form.state.fiatCurrency)}
+                    {formatCurrency(
+                      !isReferralDiscountConsumed() && getAppliedReferralCode()
+                        ? form.fees.totalCost - form.fees.totalFees * 0.1
+                        : form.fees.totalCost,
+                      form.state.fiatCurrency
+                    )}
                   </span>
                 </div>
               </div>
+              <Link
+                href="/referral"
+                className="mt-4 block text-xs text-primary hover:underline"
+              >
+                🎁 Refer a friend → they get 10% off their first ramp
+              </Link>
             </div>
           </div>
         </div>

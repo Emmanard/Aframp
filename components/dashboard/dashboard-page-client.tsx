@@ -18,28 +18,21 @@ export function DashboardPageClient({ initialWallet, initialAddress }: Dashboard
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    // Prefer URL params passed from the server, then fall back to localStorage
-    const wallet =
-      initialWallet || (typeof window !== 'undefined' ? localStorage.getItem('walletName') : null)
-    const address =
-      initialAddress ||
-      (typeof window !== 'undefined' ? localStorage.getItem('walletAddress') : null)
+    // Prefer URL params passed from the server, then fall back to sessionStorage
+    const wallet = initialWallet || walletSession.getName()
+    const address = initialAddress || walletSession.getAddress()
 
     if (wallet && address) {
-      // Batch state updates
       Promise.resolve().then(() => {
         setWalletName(wallet)
         setWalletAddress(address)
         setConnected(true)
 
-        // Ensure persistence
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('walletName', wallet)
-          localStorage.setItem('walletAddress', address)
-        }
+        // Ensure persistence within the session
+        walletSession.setName(wallet)
+        walletSession.setAddress(address)
       })
     } else {
-      // Redirect to home if not connected
       router.push('/')
     }
   }, [initialWallet, initialAddress, router])
