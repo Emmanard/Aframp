@@ -12,10 +12,23 @@ import {
   ChevronRight,
   Clock,
   Eye,
+  ExternalLink,
   Receipt,
   RefreshCcw,
   XCircle,
 } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -41,6 +54,8 @@ interface Transaction {
 type SortField = 'date' | 'type' | 'asset' | 'amount' | 'status'
 type SortDirection = 'asc' | 'desc'
 type QuickFilter = 'all' | 'onramp' | 'offramp' | 'billpay' | 'failed'
+type StatusFilter = 'all' | Transaction['status']
+type PeriodFilter = '7d' | '30d' | 'all'
 
 const PAGE_SIZE = 5
 
@@ -294,6 +309,8 @@ function useVirtualList<T>(items: T[], rowHeight: number, containerHeight: numbe
 
 export function TransactionHistory() {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('30d')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
@@ -311,10 +328,28 @@ export function TransactionHistory() {
   ]
 
   const filteredTransactions = useMemo(() => {
-    if (quickFilter === 'all') return mockTransactions
-    if (quickFilter === 'failed') return mockTransactions.filter((tx) => tx.status === 'failed')
-    return mockTransactions.filter((tx) => tx.type === quickFilter)
-  }, [quickFilter])
+    const now = new Date('2026-02-26T23:59:59.999Z')
+    const rangeStart =
+      periodFilter === '7d'
+        ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        : periodFilter === '30d'
+          ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          : null
+
+    return mockTransactions.filter((tx) => {
+      const byQuickFilter =
+        quickFilter === 'all'
+          ? true
+          : quickFilter === 'failed'
+            ? tx.status === 'failed'
+            : tx.type === quickFilter
+
+      const byStatus = statusFilter === 'all' ? true : tx.status === statusFilter
+      const byPeriod = rangeStart ? new Date(tx.date) >= rangeStart : true
+
+      return byQuickFilter && byStatus && byPeriod
+    })
+  }, [periodFilter, quickFilter, statusFilter])
 
   const sortedTransactions = useMemo(() => {
     const valueByStatus: Record<Transaction['status'], number> = {
@@ -415,6 +450,49 @@ export function TransactionHistory() {
     setPage(1)
   }
 
+  const volumeChartData = useMemo(() => {
+    const grouped = filteredTransactions.reduce<Record<string, number>>((acc, tx) => {
+      const label = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }).format(new Date(tx.date))
+      acc[label] = (acc[label] ?? 0) + tx.amount
+      return acc
+    }, {})
+
+    return Object.entries(grouped).map(([date, amount]) => ({
+      date,
+      amount,
+    }))
+  }, [filteredTransactions])
+
+  const typeDistributionData = useMemo(() => {
+    const total = filteredTransactions.length
+    const byType = filteredTransactions.reduce<Record<Transaction['type'], number>>(
+      (acc, tx) => {
+        acc[tx.type] += 1
+        return acc
+      },
+      {
+        onramp: 0,
+        offramp: 0,
+        billpay: 0,
+      }
+    )
+
+    return (Object.keys(byType) as Array<Transaction['type']>).map((type) => ({
+      name: typeConfig[type].label,
+      value: byType[type],
+      percentage: total > 0 ? Math.round((byType[type] / total) * 100) : 0,
+      color:
+        type === 'onramp'
+          ? '#10b981'
+          : type === 'offramp'
+            ? '#f59e0b'
+            : '#8b5cf6',
+    }))
+  }, [filteredTransactions])
+
   const onTouchStart = (xPosition: number) => {
     touchStartX.current = xPosition
   }
@@ -432,6 +510,14 @@ export function TransactionHistory() {
     if (status === 'completed') return <CheckCircle2 className="h-4 w-4" />
     if (status === 'pending') return <Clock className="h-4 w-4" />
     return <XCircle className="h-4 w-4" />
+  }
+
+  const getExplorerUrl = (txId: string) => {
+    return `https://verify.aframp.com/order/${txId}`
+  }
+
+  const handleViewTransaction = (txId: string) => {
+    window.open(getExplorerUrl(txId), '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -717,11 +803,13 @@ export function TransactionHistory() {
               className="relative overflow-hidden rounded-xl border border-border bg-card"
             >
               <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
-                <Button size="sm" variant="outline" className="h-9 px-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 px-3"
+                  onClick={() => handleViewTransaction(tx.id)}
+                >
                   <Eye className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="outline" className="h-9 px-3">
-                  <RefreshCcw className="h-4 w-4" />
                 </Button>
               </div>
               <motion.div
@@ -743,7 +831,14 @@ export function TransactionHistory() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">{typeConfig[tx.type].label}</p>
-                      <p className="text-xs text-muted-foreground">{tx.id}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleViewTransaction(tx.id)}
+                        className="text-xs text-muted-foreground hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
+                      >
+                        {tx.id}
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
                       <p className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</p>
                     </div>
                   </div>
