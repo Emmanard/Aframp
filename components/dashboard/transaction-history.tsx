@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import {
   ArrowDown,
@@ -31,6 +32,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+const TransactionChart = dynamic(
+  () => import('./transaction-chart').then((m) => m.TransactionChart),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted" /> }
+)
+
+const VIRTUAL_THRESHOLD = 50
+const ROW_HEIGHT = 72 // px — approximate height of each mobile card / table row
 
 interface Transaction {
   id: string
@@ -286,6 +295,18 @@ function Pagination({
   )
 }
 
+function useVirtualList<T>(items: T[], rowHeight: number, containerHeight: number) {
+  const [scrollTop, setScrollTop] = useState(0)
+  const visibleStart = Math.max(0, Math.floor(scrollTop / rowHeight) - 2)
+  const visibleEnd = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + 2)
+  const visibleItems = items.slice(visibleStart, visibleEnd).map((item, i) => ({
+    item,
+    index: visibleStart + i,
+    offsetTop: (visibleStart + i) * rowHeight,
+  }))
+  return { visibleItems, totalHeight: items.length * rowHeight, setScrollTop }
+}
+
 export function TransactionHistory() {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -296,6 +317,7 @@ export function TransactionHistory() {
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null)
 
   const touchStartX = useRef<number>(0)
+  const VIRTUAL_CONTAINER_HEIGHT = 480
 
   const quickFilters: Array<{ key: QuickFilter; label: string }> = [
     { key: 'all', label: 'All' },
@@ -379,6 +401,24 @@ export function TransactionHistory() {
     const start = (currentPage - 1) * PAGE_SIZE
     return sortedTransactions.slice(start, start + PAGE_SIZE)
   }, [currentPage, sortedTransactions])
+
+  const isVirtualized = sortedTransactions.length > VIRTUAL_THRESHOLD
+
+  const chartData = useMemo(
+    () =>
+      sortedTransactions.slice(0, 10).map((tx) => ({
+        label: tx.id.split('-')[1] ?? tx.id,
+        amount: tx.amount,
+        type: tx.type,
+      })),
+    [sortedTransactions]
+  )
+
+  const { visibleItems, totalHeight, setScrollTop } = useVirtualList(
+    sortedTransactions,
+    ROW_HEIGHT,
+    VIRTUAL_CONTAINER_HEIGHT
+  )
 
   const formatAmount = (value: number) => {
     return value.toLocaleString('en-US', {
@@ -512,224 +552,238 @@ export function TransactionHistory() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/20 p-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Filters
-        </span>
-        <select
-          value={statusFilter}
-          onChange={(event) => {
-            setStatusFilter(event.target.value as StatusFilter)
-            setPage(1)
-          }}
-          className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none"
-          aria-label="Filter by status"
-        >
-          <option value="all">All status</option>
-          <option value="completed">Completed</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Failed</option>
-        </select>
-        <select
-          value={periodFilter}
-          onChange={(event) => {
-            setPeriodFilter(event.target.value as PeriodFilter)
-            setPage(1)
-          }}
-          className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none"
-          aria-label="Filter by date range"
-        >
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="all">All time</option>
-        </select>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2.5"
-          onClick={() => {
-            setQuickFilter('all')
-            setStatusFilter('all')
-            setPeriodFilter('30d')
-            setPage(1)
-          }}
-        >
-          Reset
-        </Button>
-      </div>
-
-      <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-border p-4">
-          <p className="mb-3 text-sm font-semibold text-foreground">Transaction Volume</p>
-          <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={volumeChartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip formatter={(value) => [`NGN ${formatAmount(Number(value))}`, 'Amount']} />
-                <Bar dataKey="amount" radius={[8, 8, 0, 0]} fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-muted mb-4" />}>
+        <div className="mb-4">
+          <TransactionChart data={chartData} />
         </div>
-        <div className="rounded-xl border border-border p-4">
-          <p className="mb-3 text-sm font-semibold text-foreground">Transaction Types</p>
-          <div className="flex h-52 items-center gap-4">
-            <div className="h-full w-[55%]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={typeDistributionData}
-                    dataKey="value"
-                    innerRadius={45}
-                    outerRadius={72}
-                    paddingAngle={2}
-                  >
-                    {typeDistributionData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="w-[45%] space-y-2">
-              {typeDistributionData.map((entry) => (
-                <div key={entry.name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-muted-foreground">{entry.name}</span>
-                  </div>
-                  <span className="font-semibold text-foreground">{entry.percentage}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      </Suspense>
 
+      {/* Desktop table — paginated (≤50) or virtualized (>50) */}
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[820px]">
           <thead>
             <tr className="border-b border-border">
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Date"
-                  field="date"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Date" field="date" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Type / ID"
-                  field="type"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Type / ID" field="type" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Asset"
-                  field="asset"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Asset" field="asset" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Amount"
-                  field="amount"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Amount" field="amount" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Status"
-                  field="status"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Status" field="status" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Action
               </th>
             </tr>
           </thead>
-          <tbody>
+        </table>
+
+        {isVirtualized ? (
+          /* Virtualized tbody for >50 rows */
+          <div
+            style={{ height: VIRTUAL_CONTAINER_HEIGHT, overflowY: 'auto' }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              {visibleItems.map(({ item: tx, index, offsetTop }) => {
+                const Icon = typeConfig[tx.type].icon
+                return (
+                  <table
+                    key={tx.id}
+                    className="w-full min-w-[820px] absolute"
+                    style={{ top: offsetTop }}
+                  >
+                    <tbody>
+                      <tr
+                        style={{ height: ROW_HEIGHT }}
+                        className="border-b border-border/70 hover:bg-muted/30"
+                        aria-rowindex={index + 1}
+                      >
+                        <td className="py-4 text-sm text-foreground w-[120px]">{formatDate(tx.date)}</td>
+                        <td className="py-4">
+                          <div className="flex items-start gap-3">
+                            <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center', typeConfig[tx.type].iconClassName)}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground">{typeConfig[tx.type].label}</div>
+                              <div className="text-xs text-muted-foreground">{tx.id}</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 font-medium text-foreground">{tx.asset}</td>
+                        <td className="py-4 text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</td>
+                        <td className="py-4">
+                          <Badge variant="outline" className={cn('w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                            {renderStatusIcon(tx.status)}
+                            {statusConfig[tx.status].label}
+                          </Badge>
+                        </td>
+                        <td className="py-4">
+                          <Button variant="ghost" size="sm" className="h-9"><Eye className="h-4 w-4" />View</Button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Paginated tbody for ≤50 rows */
+          <table className="w-full min-w-[820px]">
+            <tbody>
+              {paginatedTransactions.map((tx, index) => {
+                const Icon = typeConfig[tx.type].icon
+                return (
+                  <motion.tr
+                    key={tx.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="border-b border-border/70 transition-colors hover:bg-muted/30"
+                  >
+                    <td className="py-4 text-sm text-foreground">{formatDate(tx.date)}</td>
+                    <td className="py-4">
+                      <div className="flex items-start gap-3">
+                        <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center', typeConfig[tx.type].iconClassName)}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-foreground">{typeConfig[tx.type].label}</div>
+                          <div className="text-xs text-muted-foreground">{tx.id}</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 font-medium text-foreground">{tx.asset}</td>
+                    <td className="py-4 text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</td>
+                    <td className="py-4">
+                      <Badge variant="outline" className={cn('w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                        {renderStatusIcon(tx.status)}
+                        {statusConfig[tx.status].label}
+                      </Badge>
+                    </td>
+                    <td className="py-4">
+                      <Button variant="ghost" size="sm" className="h-9"><Eye className="h-4 w-4" />View</Button>
+                    </td>
+                  </motion.tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Mobile cards — paginated (≤50) or virtualized (>50) */}
+      <div className="md:hidden">
+        {isVirtualized ? (
+          <div
+            style={{ height: VIRTUAL_CONTAINER_HEIGHT, overflowY: 'auto' }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              {visibleItems.map(({ item: tx, offsetTop }) => {
+                const Icon = typeConfig[tx.type].icon
+                const isSwipeActive = activeSwipeId === tx.id
+                return (
+                  <div
+                    key={tx.id}
+                    className="absolute w-full px-0"
+                    style={{ top: offsetTop, height: ROW_HEIGHT }}
+                  >
+                    <div className="relative overflow-hidden rounded-xl border border-border bg-card h-full">
+                      <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
+                        <Button size="sm" variant="outline" className="h-9 px-3"><Eye className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="h-9 px-3"><RefreshCcw className="h-4 w-4" /></Button>
+                      </div>
+                      <motion.div
+                        animate={{ x: isSwipeActive ? -88 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        onTouchStart={(e) => onTouchStart(e.changedTouches[0].clientX)}
+                        onTouchEnd={(e) => onTouchEnd(e.changedTouches[0].clientX, tx.id)}
+                        className="relative z-10 bg-card p-3 h-full flex flex-col justify-center"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('h-8 w-8 rounded-lg border flex items-center justify-center shrink-0', typeConfig[tx.type].iconClassName)}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-foreground text-sm">{typeConfig[tx.type].label}</p>
+                              <p className="text-xs text-muted-foreground">{tx.id}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-foreground text-sm">NGN {formatAmount(tx.amount)}</p>
+                            <Badge variant="outline" className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold flex items-center gap-1', statusConfig[tx.status].className)}>
+                              {renderStatusIcon(tx.status)}
+                              {statusConfig[tx.status].label}
+                            </Badge>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
             {paginatedTransactions.map((tx, index) => {
               const Icon = typeConfig[tx.type].icon
+              const isSwipeActive = activeSwipeId === tx.id
               return (
-                <motion.tr
+                <motion.div
                   key={tx.id}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="border-b border-border/70 transition-colors hover:bg-muted/30"
+                  className="relative overflow-hidden rounded-xl border border-border bg-card"
                 >
-                  <td className="py-4 text-sm text-foreground">{formatDate(tx.date)}</td>
-                  <td className="py-4">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          'h-9 w-9 rounded-lg border flex items-center justify-center',
-                          typeConfig[tx.type].iconClassName
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-foreground">
-                          {typeConfig[tx.type].label}
+                  <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
+                    <Button size="sm" variant="outline" className="h-9 px-3"><Eye className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="outline" className="h-9 px-3"><RefreshCcw className="h-4 w-4" /></Button>
+                  </div>
+                  <motion.div
+                    animate={{ x: isSwipeActive ? -88 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    onTouchStart={(event) => onTouchStart(event.changedTouches[0].clientX)}
+                    onTouchEnd={(event) => onTouchEnd(event.changedTouches[0].clientX, tx.id)}
+                    className="relative z-10 bg-card p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center shrink-0', typeConfig[tx.type].iconClassName)}>
+                          <Icon className="h-4 w-4" />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleViewTransaction(tx.id)}
-                          className="text-xs text-muted-foreground hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
-                        >
-                          {tx.id}
-                          <ExternalLink className="h-3 w-3" />
-                        </button>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {tx.counterparty}
+                        <div>
+                          <p className="font-semibold text-foreground">{typeConfig[tx.type].label}</p>
+                          <p className="text-xs text-muted-foreground">{tx.id}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</p>
                         </div>
                       </div>
+                      <Badge variant="outline" className={cn('rounded-full border px-3 py-1 text-xs font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                        {renderStatusIcon(tx.status)}
+                        {statusConfig[tx.status].label}
+                      </Badge>
                     </div>
-                  </td>
-                  <td className="py-4 font-medium text-foreground">{tx.asset}</td>
-                  <td className="py-4 text-base font-bold text-foreground">
-                    NGN {formatAmount(tx.amount)}
-                  </td>
-                  <td className="py-4">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5',
-                        statusConfig[tx.status].className
-                      )}
-                    >
-                      {renderStatusIcon(tx.status)}
-                      {statusConfig[tx.status].label}
-                    </Badge>
-                  </td>
-                  <td className="py-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 gap-1.5"
-                      onClick={() => handleViewTransaction(tx.id)}
-                    >
-                      <Eye className="h-4 w-4" />
-                      View
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  </td>
-                </motion.tr>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">{formatDate(tx.date)}</p>
+                      <p className="text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Swipe left for actions</p>
+                  </motion.div>
+                </motion.div>
               )
             })}
           </tbody>
@@ -812,14 +866,16 @@ export function TransactionHistory() {
         })}
       </div>
 
-      <div className="mt-4">
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalCount={sortedTransactions.length}
-          onPageChange={setPage}
-        />
-      </div>
+      {!isVirtualized && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalCount={sortedTransactions.length}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
     </motion.div>
   )
 }
