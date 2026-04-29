@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/dashboard/dashboard-layout'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 
 interface DashboardPageClientProps {
   initialWallet?: string
@@ -47,7 +48,7 @@ export function DashboardPageClient({ initialWallet, initialAddress }: Dashboard
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <LoadingSpinner className="mx-auto mb-4 h-12 w-12" />
           <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>

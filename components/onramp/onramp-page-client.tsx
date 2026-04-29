@@ -24,6 +24,7 @@ import { formatCurrency } from '@/lib/onramp/formatters'
 import { isValidStellarAddress } from '@/lib/onramp/validation'
 import type { OnrampOrder } from '@/types/onramp'
 import { Button } from '@/components/ui/button' // Added missing import for Button
+import { Skeleton } from '@/components/ui/skeleton'
 
 const ORDER_KEY = 'onramp:latest-order'
 
@@ -144,9 +145,9 @@ export function OnrampPageClient() {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-12">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 w-48 rounded-full bg-muted" />
-            <div className="h-64 rounded-3xl bg-muted" />
+          <div className="space-y-6">
+            <Skeleton className="h-8 w-48 rounded-full" />
+            <Skeleton className="h-64 rounded-3xl" />
           </div>
         </div>
       </div>
