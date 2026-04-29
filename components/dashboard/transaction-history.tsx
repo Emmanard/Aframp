@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import {
   ArrowDown,
@@ -11,13 +12,34 @@ import {
   ChevronRight,
   Clock,
   Eye,
+  ExternalLink,
   Receipt,
   RefreshCcw,
   XCircle,
 } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+const TransactionChart = dynamic(
+  () => import('./transaction-chart').then((m) => m.TransactionChart),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted" /> }
+)
+
+const VIRTUAL_THRESHOLD = 50
+const ROW_HEIGHT = 72 // px — approximate height of each mobile card / table row
 
 interface Transaction {
   id: string
@@ -32,6 +54,8 @@ interface Transaction {
 type SortField = 'date' | 'type' | 'asset' | 'amount' | 'status'
 type SortDirection = 'asc' | 'desc'
 type QuickFilter = 'all' | 'onramp' | 'offramp' | 'billpay' | 'failed'
+type StatusFilter = 'all' | Transaction['status']
+type PeriodFilter = '7d' | '30d' | 'all'
 
 const PAGE_SIZE = 5
 
@@ -271,14 +295,29 @@ function Pagination({
   )
 }
 
+function useVirtualList<T>(items: T[], rowHeight: number, containerHeight: number) {
+  const [scrollTop, setScrollTop] = useState(0)
+  const visibleStart = Math.max(0, Math.floor(scrollTop / rowHeight) - 2)
+  const visibleEnd = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + 2)
+  const visibleItems = items.slice(visibleStart, visibleEnd).map((item, i) => ({
+    item,
+    index: visibleStart + i,
+    offsetTop: (visibleStart + i) * rowHeight,
+  }))
+  return { visibleItems, totalHeight: items.length * rowHeight, setScrollTop }
+}
+
 export function TransactionHistory() {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('30d')
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null)
 
   const touchStartX = useRef<number>(0)
+  const VIRTUAL_CONTAINER_HEIGHT = 480
 
   const quickFilters: Array<{ key: QuickFilter; label: string }> = [
     { key: 'all', label: 'All' },
@@ -289,10 +328,28 @@ export function TransactionHistory() {
   ]
 
   const filteredTransactions = useMemo(() => {
-    if (quickFilter === 'all') return mockTransactions
-    if (quickFilter === 'failed') return mockTransactions.filter((tx) => tx.status === 'failed')
-    return mockTransactions.filter((tx) => tx.type === quickFilter)
-  }, [quickFilter])
+    const now = new Date('2026-02-26T23:59:59.999Z')
+    const rangeStart =
+      periodFilter === '7d'
+        ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        : periodFilter === '30d'
+          ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          : null
+
+    return mockTransactions.filter((tx) => {
+      const byQuickFilter =
+        quickFilter === 'all'
+          ? true
+          : quickFilter === 'failed'
+            ? tx.status === 'failed'
+            : tx.type === quickFilter
+
+      const byStatus = statusFilter === 'all' ? true : tx.status === statusFilter
+      const byPeriod = rangeStart ? new Date(tx.date) >= rangeStart : true
+
+      return byQuickFilter && byStatus && byPeriod
+    })
+  }, [periodFilter, quickFilter, statusFilter])
 
   const sortedTransactions = useMemo(() => {
     const valueByStatus: Record<Transaction['status'], number> = {
@@ -345,6 +402,24 @@ export function TransactionHistory() {
     return sortedTransactions.slice(start, start + PAGE_SIZE)
   }, [currentPage, sortedTransactions])
 
+  const isVirtualized = sortedTransactions.length > VIRTUAL_THRESHOLD
+
+  const chartData = useMemo(
+    () =>
+      sortedTransactions.slice(0, 10).map((tx) => ({
+        label: tx.id.split('-')[1] ?? tx.id,
+        amount: tx.amount,
+        type: tx.type,
+      })),
+    [sortedTransactions]
+  )
+
+  const { visibleItems, totalHeight, setScrollTop } = useVirtualList(
+    sortedTransactions,
+    ROW_HEIGHT,
+    VIRTUAL_CONTAINER_HEIGHT
+  )
+
   const formatAmount = (value: number) => {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -375,6 +450,49 @@ export function TransactionHistory() {
     setPage(1)
   }
 
+  const volumeChartData = useMemo(() => {
+    const grouped = filteredTransactions.reduce<Record<string, number>>((acc, tx) => {
+      const label = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }).format(new Date(tx.date))
+      acc[label] = (acc[label] ?? 0) + tx.amount
+      return acc
+    }, {})
+
+    return Object.entries(grouped).map(([date, amount]) => ({
+      date,
+      amount,
+    }))
+  }, [filteredTransactions])
+
+  const typeDistributionData = useMemo(() => {
+    const total = filteredTransactions.length
+    const byType = filteredTransactions.reduce<Record<Transaction['type'], number>>(
+      (acc, tx) => {
+        acc[tx.type] += 1
+        return acc
+      },
+      {
+        onramp: 0,
+        offramp: 0,
+        billpay: 0,
+      }
+    )
+
+    return (Object.keys(byType) as Array<Transaction['type']>).map((type) => ({
+      name: typeConfig[type].label,
+      value: byType[type],
+      percentage: total > 0 ? Math.round((byType[type] / total) * 100) : 0,
+      color:
+        type === 'onramp'
+          ? '#10b981'
+          : type === 'offramp'
+            ? '#f59e0b'
+            : '#8b5cf6',
+    }))
+  }, [filteredTransactions])
+
   const onTouchStart = (xPosition: number) => {
     touchStartX.current = xPosition
   }
@@ -392,6 +510,14 @@ export function TransactionHistory() {
     if (status === 'completed') return <CheckCircle2 className="h-4 w-4" />
     if (status === 'pending') return <Clock className="h-4 w-4" />
     return <XCircle className="h-4 w-4" />
+  }
+
+  const getExplorerUrl = (txId: string) => {
+    return `https://verify.aframp.com/order/${txId}`
+  }
+
+  const handleViewTransaction = (txId: string) => {
+    window.open(getExplorerUrl(txId), '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -426,111 +552,238 @@ export function TransactionHistory() {
         </div>
       </div>
 
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-lg bg-muted mb-4" />}>
+        <div className="mb-4">
+          <TransactionChart data={chartData} />
+        </div>
+      </Suspense>
+
+      {/* Desktop table — paginated (≤50) or virtualized (>50) */}
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[820px]">
           <thead>
             <tr className="border-b border-border">
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Date"
-                  field="date"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Date" field="date" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Type / ID"
-                  field="type"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Type / ID" field="type" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Asset"
-                  field="asset"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Asset" field="asset" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Amount"
-                  field="amount"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Amount" field="amount" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left">
-                <SortHeader
-                  label="Status"
-                  field="status"
-                  sortField={sortField}
-                  onSortChange={onSortChange}
-                />
+                <SortHeader label="Status" field="status" sortField={sortField} onSortChange={onSortChange} />
               </th>
               <th className="py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Action
               </th>
             </tr>
           </thead>
-          <tbody>
+        </table>
+
+        {isVirtualized ? (
+          /* Virtualized tbody for >50 rows */
+          <div
+            style={{ height: VIRTUAL_CONTAINER_HEIGHT, overflowY: 'auto' }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              {visibleItems.map(({ item: tx, index, offsetTop }) => {
+                const Icon = typeConfig[tx.type].icon
+                return (
+                  <table
+                    key={tx.id}
+                    className="w-full min-w-[820px] absolute"
+                    style={{ top: offsetTop }}
+                  >
+                    <tbody>
+                      <tr
+                        style={{ height: ROW_HEIGHT }}
+                        className="border-b border-border/70 hover:bg-muted/30"
+                        aria-rowindex={index + 1}
+                      >
+                        <td className="py-4 text-sm text-foreground w-[120px]">{formatDate(tx.date)}</td>
+                        <td className="py-4">
+                          <div className="flex items-start gap-3">
+                            <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center', typeConfig[tx.type].iconClassName)}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground">{typeConfig[tx.type].label}</div>
+                              <div className="text-xs text-muted-foreground">{tx.id}</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 font-medium text-foreground">{tx.asset}</td>
+                        <td className="py-4 text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</td>
+                        <td className="py-4">
+                          <Badge variant="outline" className={cn('w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                            {renderStatusIcon(tx.status)}
+                            {statusConfig[tx.status].label}
+                          </Badge>
+                        </td>
+                        <td className="py-4">
+                          <Button variant="ghost" size="sm" className="h-9"><Eye className="h-4 w-4" />View</Button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Paginated tbody for ≤50 rows */
+          <table className="w-full min-w-[820px]">
+            <tbody>
+              {paginatedTransactions.map((tx, index) => {
+                const Icon = typeConfig[tx.type].icon
+                return (
+                  <motion.tr
+                    key={tx.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="border-b border-border/70 transition-colors hover:bg-muted/30"
+                  >
+                    <td className="py-4 text-sm text-foreground">{formatDate(tx.date)}</td>
+                    <td className="py-4">
+                      <div className="flex items-start gap-3">
+                        <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center', typeConfig[tx.type].iconClassName)}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-foreground">{typeConfig[tx.type].label}</div>
+                          <div className="text-xs text-muted-foreground">{tx.id}</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 font-medium text-foreground">{tx.asset}</td>
+                    <td className="py-4 text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</td>
+                    <td className="py-4">
+                      <Badge variant="outline" className={cn('w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                        {renderStatusIcon(tx.status)}
+                        {statusConfig[tx.status].label}
+                      </Badge>
+                    </td>
+                    <td className="py-4">
+                      <Button variant="ghost" size="sm" className="h-9"><Eye className="h-4 w-4" />View</Button>
+                    </td>
+                  </motion.tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Mobile cards — paginated (≤50) or virtualized (>50) */}
+      <div className="md:hidden">
+        {isVirtualized ? (
+          <div
+            style={{ height: VIRTUAL_CONTAINER_HEIGHT, overflowY: 'auto' }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              {visibleItems.map(({ item: tx, offsetTop }) => {
+                const Icon = typeConfig[tx.type].icon
+                const isSwipeActive = activeSwipeId === tx.id
+                return (
+                  <div
+                    key={tx.id}
+                    className="absolute w-full px-0"
+                    style={{ top: offsetTop, height: ROW_HEIGHT }}
+                  >
+                    <div className="relative overflow-hidden rounded-xl border border-border bg-card h-full">
+                      <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
+                        <Button size="sm" variant="outline" className="h-9 px-3"><Eye className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="h-9 px-3"><RefreshCcw className="h-4 w-4" /></Button>
+                      </div>
+                      <motion.div
+                        animate={{ x: isSwipeActive ? -88 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        onTouchStart={(e) => onTouchStart(e.changedTouches[0].clientX)}
+                        onTouchEnd={(e) => onTouchEnd(e.changedTouches[0].clientX, tx.id)}
+                        className="relative z-10 bg-card p-3 h-full flex flex-col justify-center"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('h-8 w-8 rounded-lg border flex items-center justify-center shrink-0', typeConfig[tx.type].iconClassName)}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-foreground text-sm">{typeConfig[tx.type].label}</p>
+                              <p className="text-xs text-muted-foreground">{tx.id}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-foreground text-sm">NGN {formatAmount(tx.amount)}</p>
+                            <Badge variant="outline" className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold flex items-center gap-1', statusConfig[tx.status].className)}>
+                              {renderStatusIcon(tx.status)}
+                              {statusConfig[tx.status].label}
+                            </Badge>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
             {paginatedTransactions.map((tx, index) => {
               const Icon = typeConfig[tx.type].icon
+              const isSwipeActive = activeSwipeId === tx.id
               return (
-                <motion.tr
+                <motion.div
                   key={tx.id}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="border-b border-border/70 transition-colors hover:bg-muted/30"
+                  className="relative overflow-hidden rounded-xl border border-border bg-card"
                 >
-                  <td className="py-4 text-sm text-foreground">{formatDate(tx.date)}</td>
-                  <td className="py-4">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          'h-9 w-9 rounded-lg border flex items-center justify-center',
-                          typeConfig[tx.type].iconClassName
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-foreground">
-                          {typeConfig[tx.type].label}
+                  <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
+                    <Button size="sm" variant="outline" className="h-9 px-3"><Eye className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="outline" className="h-9 px-3"><RefreshCcw className="h-4 w-4" /></Button>
+                  </div>
+                  <motion.div
+                    animate={{ x: isSwipeActive ? -88 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    onTouchStart={(event) => onTouchStart(event.changedTouches[0].clientX)}
+                    onTouchEnd={(event) => onTouchEnd(event.changedTouches[0].clientX, tx.id)}
+                    className="relative z-10 bg-card p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className={cn('h-9 w-9 rounded-lg border flex items-center justify-center shrink-0', typeConfig[tx.type].iconClassName)}>
+                          <Icon className="h-4 w-4" />
                         </div>
-                        <div className="text-xs text-muted-foreground">{tx.id}</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {tx.counterparty}
+                        <div>
+                          <p className="font-semibold text-foreground">{typeConfig[tx.type].label}</p>
+                          <p className="text-xs text-muted-foreground">{tx.id}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</p>
                         </div>
                       </div>
+                      <Badge variant="outline" className={cn('rounded-full border px-3 py-1 text-xs font-semibold flex items-center gap-1.5', statusConfig[tx.status].className)}>
+                        {renderStatusIcon(tx.status)}
+                        {statusConfig[tx.status].label}
+                      </Badge>
                     </div>
-                  </td>
-                  <td className="py-4 font-medium text-foreground">{tx.asset}</td>
-                  <td className="py-4 text-base font-bold text-foreground">
-                    NGN {formatAmount(tx.amount)}
-                  </td>
-                  <td className="py-4">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'w-fit rounded-full border px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5',
-                        statusConfig[tx.status].className
-                      )}
-                    >
-                      {renderStatusIcon(tx.status)}
-                      {statusConfig[tx.status].label}
-                    </Badge>
-                  </td>
-                  <td className="py-4">
-                    <Button variant="ghost" size="sm" className="h-9">
-                      <Eye className="h-4 w-4" />
-                      View
-                    </Button>
-                  </td>
-                </motion.tr>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">{formatDate(tx.date)}</p>
+                      <p className="text-base font-bold text-foreground">NGN {formatAmount(tx.amount)}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Swipe left for actions</p>
+                  </motion.div>
+                </motion.div>
               )
             })}
           </tbody>
@@ -550,18 +803,20 @@ export function TransactionHistory() {
               className="relative overflow-hidden rounded-xl border border-border bg-card"
             >
               <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
-                <Button size="sm" variant="outline" className="h-9 px-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 px-3"
+                  onClick={() => handleViewTransaction(tx.id)}
+                >
                   <Eye className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="outline" className="h-9 px-3">
-                  <RefreshCcw className="h-4 w-4" />
                 </Button>
               </div>
               <motion.div
                 animate={{ x: isSwipeActive ? -88 : 0 }}
                 transition={{ duration: 0.2 }}
-                onTouchStart={(event) => onTouchStart(event.changedTouches[0].clientX)}
-                onTouchEnd={(event) => onTouchEnd(event.changedTouches[0].clientX, tx.id)}
+                onTouchStart={(event: React.TouchEvent<HTMLDivElement>) => onTouchStart(event.changedTouches[0].clientX)}
+                onTouchEnd={(event: React.TouchEvent<HTMLDivElement>) => onTouchEnd(event.changedTouches[0].clientX, tx.id)}
                 className="relative z-10 bg-card p-4"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -576,7 +831,14 @@ export function TransactionHistory() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">{typeConfig[tx.type].label}</p>
-                      <p className="text-xs text-muted-foreground">{tx.id}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleViewTransaction(tx.id)}
+                        className="text-xs text-muted-foreground hover:text-primary hover:underline transition-colors inline-flex items-center gap-1"
+                      >
+                        {tx.id}
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
                       <p className="mt-0.5 text-xs text-muted-foreground">{tx.counterparty}</p>
                     </div>
                   </div>
@@ -604,14 +866,16 @@ export function TransactionHistory() {
         })}
       </div>
 
-      <div className="mt-4">
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalCount={sortedTransactions.length}
-          onPageChange={setPage}
-        />
-      </div>
+      {!isVirtualized && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalCount={sortedTransactions.length}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
     </motion.div>
   )
 }

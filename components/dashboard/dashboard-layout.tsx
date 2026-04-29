@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { Home } from 'lucide-react'
+import { Home, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { EthPriceTicker } from '@/components/dashboard/eth-price-ticker'
@@ -38,6 +38,12 @@ export function DashboardLayout({ children, walletAddress }: DashboardLayoutProp
                 <EthPriceTicker />
                 <ThemeToggle />
                 <ConnectButton />
+                <Link href="/settings">
+                  <Button variant="ghost" size="sm" id="nav-settings-btn">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
+                  </Button>
+                </Link>
                 <Link href="/">
                   <Button variant="ghost" size="sm">
                     <Home className="w-4 h-4 mr-2" />

@@ -10,6 +10,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useOfframpRate } from '@/hooks/use-offramp-rate'
 import { useOfframpForm } from '@/hooks/use-offramp-form'
 import { useOfframpBalances } from '@/hooks/use-offramp-balances'
+import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency } from '@/lib/onramp/formatters'
 import { formatUsd, formatRateCountdown } from '@/lib/offramp/formatters'
 import type { OfframpOrder } from '@/types/offramp'
@@ -37,7 +38,8 @@ export function OfframpPageClient() {
   const selectedAsset = form.selectedAsset
   const { rate, countdown, lastUpdated, isLoading, refresh } = useOfframpRate(
     selectedAsset.asset,
-    selectedAsset.chain
+    selectedAsset.chain,
+    form.state.fiatCurrency
   )
 
   useEffect(() => {
@@ -113,9 +115,9 @@ export function OfframpPageClient() {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-12">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 w-48 rounded-full bg-muted" />
-            <div className="h-64 rounded-3xl bg-muted" />
+          <div className="space-y-6">
+            <Skeleton className="h-8 w-48 rounded-full" />
+            <Skeleton className="h-64 rounded-3xl" />
           </div>
         </div>
       </div>

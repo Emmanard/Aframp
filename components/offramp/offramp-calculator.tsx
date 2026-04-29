@@ -114,6 +114,26 @@ export function OfframpCalculator({
           ≈ {formatUsd(usdEquivalent)} USD equivalent
         </div>
 
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-foreground">Select Currency</label>
+          <div className="flex flex-wrap gap-2">
+            {(['NGN', 'KES', 'GHS', 'ZAR'] as const).map((curr) => (
+              <button
+                key={curr}
+                type="button"
+                onClick={() => onFiatChange(curr)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                  fiatCurrency === curr
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                {curr}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-[1fr_180px] md:items-end">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">You&apos;ll Receive</label>
