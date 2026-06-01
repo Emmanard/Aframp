@@ -41,6 +41,11 @@ interface TokenCache {
 
 let tokenCache: TokenCache | null = null
 
+/** Clears cached OAuth token (for tests). */
+export function resetMtnMomoTokenCacheForTests(): void {
+  tokenCache = null
+}
+
 async function fetchAccessToken(): Promise<string> {
   const now = Date.now()
   if (tokenCache && tokenCache.expiresAt > now + 30_000) {
