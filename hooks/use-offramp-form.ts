@@ -21,6 +21,13 @@ export function useOfframpForm(options: OfframpAssetOption[], rate: number) {
   const [errors, setErrors] = useState<{ amount?: string; liquidity?: string; limit?: string }>({})
   const [debouncedAmount, setDebouncedAmount] = useState(0)
   const [isCalculating, setIsCalculating] = useState(false)
+  /**
+   * remainingCents and resetAt are populated from the backend
+   * GET /api/withdrawals/limits response.  The frontend reflects these values
+   * but the backend is the source of truth — no magic numbers here.
+   */
+  const [remainingCents, setRemainingCents] = useState<number | null>(null)
+  const [resetAt, setResetAt] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.resolve().then(() => {
@@ -93,10 +100,11 @@ export function useOfframpForm(options: OfframpAssetOption[], rate: number) {
       nextErrors.liquidity = 'Limited liquidity available right now. Try a smaller amount.'
     }
 
-    const dailyLimit = 5000000
-    const dailyUsed = 1250000
-    if (fiatAmount + dailyUsed > dailyLimit) {
-      nextErrors.limit = 'Daily withdrawal limit reached.'
+    // Daily limit is enforced on the backend via /api/withdrawals.
+    // The frontend reflects the remaining allowance returned by the API —
+    // it does not enforce the limit itself (no magic numbers here).
+    if (remainingCents !== null && fiatAmount > remainingCents) {
+      nextErrors.limit = `Daily withdrawal limit reached. Remaining: ${remainingCents.toLocaleString('en-US')} cents.`
     }
 
     Promise.resolve().then(() => setErrors(nextErrors))
@@ -140,6 +148,10 @@ export function useOfframpForm(options: OfframpAssetOption[], rate: number) {
     errors,
     isCalculating,
     isValid,
+    remainingCents,
+    resetAt,
+    setRemainingCents,
+    setResetAt,
     setAmountInput,
     setFiatCurrency,
     setAssetId,

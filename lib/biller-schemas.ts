@@ -71,7 +71,7 @@ export const BILLER_SCHEMAS: Record<string, BillerSchema> = {
   },
   'ikeja-electric': {
     id: 'ikeja-electric',
-    name: 'Ikeja Electric',
+    name: 'Ikeja Electric (NEPA)',
     logo: '⚡',
     fields: [
       {
@@ -84,6 +84,19 @@ export const BILLER_SCHEMAS: Record<string, BillerSchema> = {
           required: true,
           pattern: '^\\d{11}$',
           message: 'Meter number must be 11 digits',
+        },
+      },
+      {
+        id: 'meterType',
+        name: 'meterType',
+        label: 'Meter Type',
+        type: 'select',
+        options: [
+          { label: 'Prepaid', value: 'prepaid' },
+          { label: 'Postpaid', value: 'postpaid' },
+        ],
+        validation: {
+          required: true,
         },
       },
       {
@@ -108,6 +121,18 @@ export const BILLER_SCHEMAS: Record<string, BillerSchema> = {
           required: true,
           pattern: '^(\\+234|0)[789][01]\\d{8}$',
           message: 'Enter a valid Nigerian phone number',
+        },
+      },
+      {
+        id: 'email',
+        name: 'email',
+        label: 'Email Address',
+        type: 'email',
+        placeholder: 'your@email.com',
+        validation: {
+          required: true,
+          pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+          message: 'Enter a valid email address',
         },
       },
     ],
