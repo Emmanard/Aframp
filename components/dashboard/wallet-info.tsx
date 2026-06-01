@@ -1,9 +1,9 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Wallet, Copy, Check, ExternalLink } from 'lucide-react'
+import { Wallet, Copy, Check, ExternalLink, BadgeCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface WalletInfoProps {
   walletName: string
@@ -12,6 +12,13 @@ interface WalletInfoProps {
 
 export function WalletInfo({ walletName, walletAddress }: WalletInfoProps) {
   const [copied, setCopied] = useState(false)
+  const [isVerified, setIsVerified] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsVerified(localStorage.getItem('isVerified') === 'true')
+    }
+  }, [])
 
   const formatAddress = (address: string) => {
     if (address.length <= 10) return address
@@ -36,7 +43,10 @@ export function WalletInfo({ walletName, walletAddress }: WalletInfoProps) {
             <Wallet className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">{walletName}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">{walletName}</h2>
+              {isVerified && <BadgeCheck className="w-5 h-5 text-primary" />}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-sm text-muted-foreground font-mono">
                 {formatAddress(walletAddress)}

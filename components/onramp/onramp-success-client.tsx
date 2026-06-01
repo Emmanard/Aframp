@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { OnrampOrder } from '@/types/onramp'
 import { formatCurrency } from '@/lib/onramp/formatters'
 import { generateReceiptPDF } from '@/lib/onramp/receipt'
@@ -118,7 +119,7 @@ export function OnrampSuccessClient() {
   if (!order) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <LoadingSpinner className="h-8 w-8" />
       </div>
     )
   }

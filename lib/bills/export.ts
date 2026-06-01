@@ -58,12 +58,12 @@ export async function exportReceiptPNG(elementId: string, filename: string) {
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff',
-    onclone: (doc) => {
+    onclone: (doc: Document) => {
       const style = doc.createElement('style')
       style.textContent = RGB_OVERRIDES
       doc.head.appendChild(style)
 
-      doc.querySelectorAll("style,link[rel='stylesheet']").forEach((node) => {
+      doc.querySelectorAll("style,link[rel='stylesheet']").forEach((node: Element) => {
         const text = node.textContent || ''
         const href = node.getAttribute?.('href') || ''
         if (/oklab|oklch|lab\(/i.test(text) || /globals\.css|app\/globals/i.test(href)) {

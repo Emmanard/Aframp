@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, Copy, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { OrderStatus } from '@/types/onramp'
 import { useOrderTracking } from '@/hooks/use-order-tracking'
 import { formatCurrency, truncateAddress } from '@/lib/onramp/formatters'
@@ -72,7 +73,7 @@ export function OnrampPaymentClient() {
   if (!order) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <LoadingSpinner className="h-8 w-8" />
       </div>
     )
   }

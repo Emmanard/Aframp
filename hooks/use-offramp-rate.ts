@@ -1,41 +1,68 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { FiatCurrency } from '@/types/onramp'
 import type { OfframpAsset, OfframpChain } from '@/types/offramp'
 
 const RATE_REFRESH_SECONDS = 30
 
-const rateMap: Record<OfframpAsset, number> = {
-  cNGN: 1584,
-  USDC: 1500,
-  USDT: 1490,
-  XLM: 420,
+const coinGeckoIds: Record<OfframpAsset, string> = {
+  cNGN: 'usd-coin',
+  USDC: 'usd-coin',
+  USDT: 'tether',
+  XLM: 'stellar',
 }
 
-export function useOfframpRate(asset: OfframpAsset, chain: OfframpChain) {
+const fiatCurrencyKeys: Record<FiatCurrency, string> = {
+  NGN: 'ngn',
+  KES: 'kes',
+  GHS: 'ghs',
+  ZAR: 'zar',
+  UGX: 'ugx',
+}
+
+export function useOfframpRate(
+  asset: OfframpAsset,
+  chain: OfframpChain,
+  fiatCurrency: FiatCurrency
+) {
   const [countdown, setCountdown] = useState(RATE_REFRESH_SECONDS)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [rate, setRate] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const rate = useMemo(() => {
-    const chainMultiplier =
-      chain === 'Ethereum' ? 1.01 : chain === 'Polygon' ? 0.995 : chain === 'Base' ? 1.002 : 1
-    return rateMap[asset] * chainMultiplier
-  }, [asset, chain])
+  const fetchRate = useCallback(async () => {
+    const coinId = coinGeckoIds[asset]
+    const fiatKey = fiatCurrencyKeys[fiatCurrency]
+
+    try {
+      const res = await fetch('/api/exchange-rate')
+      if (!res.ok) throw new Error('Rate fetch failed')
+      const data = await res.json()
+      const baseRate = data[coinId]?.[fiatKey] ?? 0
+
+      const chainMultiplier =
+        chain === 'Ethereum' ? 1.01 : chain === 'Polygon' ? 0.995 : chain === 'Base' ? 1.002 : 1
+
+      setRate(baseRate * chainMultiplier)
+    } catch {
+      setRate(0)
+    }
+  }, [asset, chain, fiatCurrency])
 
   const refresh = useCallback(() => {
     setIsLoading(true)
-    setTimeout(() => {
+    fetchRate().then(() => {
       setLastUpdated(Date.now())
       setIsLoading(false)
       setCountdown(RATE_REFRESH_SECONDS)
-    }, 350)
-  }, [])
+    })
+  }, [fetchRate])
 
   useEffect(() => {
-    Promise.resolve().then(() => refresh())
-  }, [asset, chain, refresh])
+    refresh()
+  }, [refresh])
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
