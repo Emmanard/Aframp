@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { CategoryIcon } from '@/components/bills/biller-icons'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface BillCategory {
   id: string
@@ -39,11 +40,15 @@ export function CategoryGrid({ categories, searchQuery, selectedCountry }: Categ
 
   if (filteredCategories.length === 0 && searchQuery) {
     return (
-      <div className="text-center py-12">
-        <div className="text-muted-foreground">
-          No categories found matching &quot;{searchQuery}&quot;
-        </div>
-      </div>
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Categories</h2>
+        <EmptyState
+          variant="search"
+          title="No categories found"
+          description={`Nothing matched "${searchQuery}". Try a different search term.`}
+          bordered={false}
+        />
+      </section>
     )
   }
 

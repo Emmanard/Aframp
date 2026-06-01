@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { isMockEmptyEnabled } from '@/lib/mock-empty'
 
 export interface BillCategory {
   id: string
@@ -264,11 +265,13 @@ export function useBillsData(countryCode: string): UseBillsDataReturn {
   // In a real app, you would fetch data based on countryCode
   // For now, we return mock data
 
+  const useEmpty = isMockEmptyEnabled()
+
   return {
     categories: MOCK_CATEGORIES,
     recentBillers: MOCK_BILLERS,
-    transactions: MOCK_TRANSACTIONS,
-    scheduledPayments: MOCK_SCHEDULED_PAYMENTS,
+    transactions: useEmpty ? [] : MOCK_TRANSACTIONS,
+    scheduledPayments: useEmpty ? [] : MOCK_SCHEDULED_PAYMENTS,
     loading,
   }
 }

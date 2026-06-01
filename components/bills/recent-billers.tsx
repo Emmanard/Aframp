@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Clock, Star } from 'lucide-react'
 import { BillerIcon } from '@/components/bills/biller-icons'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface Biller {
   id: string
@@ -21,9 +22,10 @@ interface RecentBillersProps {
   billers: Biller[]
   searchQuery: string
   loading: boolean
+  onClearSearch?: () => void
 }
 
-export function RecentBillers({ billers, searchQuery, loading }: RecentBillersProps) {
+export function RecentBillers({ billers, searchQuery, loading, onClearSearch }: RecentBillersProps) {
   const [recentBillers, setRecentBillers] = useState<Biller[]>([])
 
   useEffect(() => {
@@ -67,14 +69,32 @@ export function RecentBillers({ billers, searchQuery, loading }: RecentBillersPr
   if (filteredBillers.length === 0 && searchQuery) {
     return (
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Recent Billers</h2>
-        </div>
-        <div className="text-center py-12">
-          <div className="text-muted-foreground">
-            No billers found matching &quot;{searchQuery}&quot;
-          </div>
-        </div>
+        <h2 className="text-xl font-semibold">Recent Billers</h2>
+        <EmptyState
+          variant="search"
+          title="No billers found"
+          description={`Nothing matched "${searchQuery}". Try another name or category.`}
+          action={
+            onClearSearch
+              ? { label: 'Clear search', onClick: onClearSearch, variant: 'outline' }
+              : undefined
+          }
+          bordered={false}
+        />
+      </section>
+    )
+  }
+
+  if (billers.length === 0) {
+    return (
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Recent Billers</h2>
+        <EmptyState
+          variant="bills"
+          title="No billers yet"
+          description="Pick a category below to pay your first bill — favorites will appear here."
+          bordered={false}
+        />
       </section>
     )
   }

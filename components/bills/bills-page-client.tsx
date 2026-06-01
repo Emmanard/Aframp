@@ -15,6 +15,7 @@ import { RecentBillers } from '@/components/bills/recent-billers'
 import { ScheduledPayments } from '@/components/bills/scheduled-payments'
 
 import { TransactionStats } from '@/components/bills/transaction-stats'
+import { RecentPayments } from '@/components/bills/recent-payments'
 
 import { useBillsData } from '@/hooks/use-bills-data'
 
@@ -115,6 +116,8 @@ export function BillsPageClient() {
           {/* Stats Overview */}
           <TransactionStats transactions={transactions} loading={loading} />
 
+          <RecentPayments transactions={transactions} loading={loading} />
+
           {/* Category Grid */}
           <CategoryGrid
             categories={categories}
@@ -123,7 +126,12 @@ export function BillsPageClient() {
           />
 
           {/* Recent Billers */}
-          <RecentBillers billers={recentBillers} searchQuery={debouncedSearch} loading={loading} />
+          <RecentBillers
+            billers={recentBillers}
+            searchQuery={debouncedSearch}
+            loading={loading}
+            onClearSearch={() => setSearchQuery('')}
+          />
 
           {/* Scheduled Payments */}
           <ScheduledPayments payments={scheduledPayments} loading={loading} />

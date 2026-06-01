@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar, Pause, Play, MoreHorizontal } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/utils'
 
 interface ScheduledPayment {
@@ -50,21 +51,13 @@ export function ScheduledPayments({ payments, loading }: ScheduledPaymentsProps)
   if (payments.length === 0) {
     return (
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Scheduled Payments</h2>
-        </div>
-        <Card className="border-border bg-card">
-          <CardContent className="p-12 text-center">
-            <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-medium mb-2">No scheduled payments</h3>
-            <p className="text-muted-foreground text-sm mb-4">
-              Set up recurring payments to automate your bills
-            </p>
-            <Button variant="outline" size="sm">
-              Schedule Payment
-            </Button>
-          </CardContent>
-        </Card>
+        <h2 className="text-xl font-semibold">Scheduled Payments</h2>
+        <EmptyState
+          variant="scheduled"
+          title="No scheduled payments"
+          description="Set up recurring payments to automate your bills and never miss a due date."
+          action={{ label: 'Schedule payment', href: '/bills/schedule' }}
+        />
       </section>
     )
   }
